@@ -42,11 +42,13 @@ CLASS lcl_main DEFINITION CREATE PRIVATE.
              payment_status TYPE snwd_so_inv_head-payment_status,
            END OF ts_items.
     TYPES: tt_items TYPE STANDARD TABLE OF ts_items.
-    DATA: lt_items TYPE tt_items.
+    DATA: gt_items TYPE tt_items.
+
+    CONSTANTS: gui_status_name TYPE sypfkey VALUE 'SALV_STANDARD'.
 
     METHODS get_data
       RETURNING
-        VALUE(rt_result) LIKE lt_items.
+        VALUE(rt_result) LIKE gt_items.
 ENDCLASS.
 
 CLASS lcl_main IMPLEMENTATION.
@@ -58,25 +60,46 @@ CLASS lcl_main IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD run.
-    lt_items = me->get_data(  ).
+    gt_items = me->get_data(  ).
     TRY.
         cl_salv_table=>factory(
           IMPORTING
             r_salv_table   = DATA(alv_table)
           CHANGING
-            t_table        = lt_items
+            t_table        = gt_items
         ).
       CATCH cx_salv_msg.
         "handle exception
     ENDTRY.
+
+    DATA: lr_columns TYPE REF TO cl_salv_columns_table,
+          lr_column  TYPE REF TO cl_salv_column_table.
+
+    lr_columns = alv_table->get_columns( ).
+
+    " modify here technical representation of the columns if it is needing
+    data: ls_color type lvc_s_colo.
+    TRY.
+        lr_column ?= lr_columns->get_column( 'CURRENCY_CODE' ).
+        ls_color-col = col_negative.
+        ls_color-int = 0.
+        ls_color-inv = 0.
+        lr_column->set_color( ls_color ).
+      CATCH cx_salv_not_found.
+    ENDTRY.
     " optimize column width
-    alv_table->get_columns( )->set_optimize( abap_true ).
+    lr_columns->set_optimize( abap_true ).
     " show panel with function buttons
     alv_table->get_functions( )->set_default( abap_true ).
     " remove restrictions on saving layouts
     alv_table->get_layout( )->set_save_restriction( if_salv_c_layout=>restrict_none ).
     " show rows with a zebra effect
     alv_table->get_display_settings( )->set_striped_pattern( if_salv_c_bool_sap=>true ).
+    "Register a custom GUI status for an ALV
+    alv_table->set_screen_status(
+      pfstatus      = gui_status_name
+      report        = sy-repid
+      set_functions = alv_table->c_functions_all ).
 
     alv_table->display( ).
 
